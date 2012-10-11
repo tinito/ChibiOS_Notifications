@@ -27,7 +27,7 @@ private:
 	Notifier<MsgType> *source;
 public:
 	int getSize(void);
-	Listener(Notifier<MsgType> *);
+	Listener(Notifier<MsgType> *, eventmask_t);
 	MsgType *get(void);
 	void release(MsgType *);
 };
@@ -39,7 +39,7 @@ private:
 public:
 	int broadcast(MsgType *);
 	int listeners(void);
-	void listen(NotifierItem<MsgType> *notifier);
+	void listen(NotifierItem<MsgType> *notifier, eventmask_t);
 	void release(MsgType*);
 	void add(void*, size_t N);
 	MsgType *alloc(void);
@@ -52,6 +52,8 @@ private:
 	Mailbox * const mailbox;
 	NotifierItem<MsgType> *next;
 public:
+	Thread *tp;
+	eventmask_t mask;
 	NotifierItem(Notifier<MsgType> *, Mailbox *);
 	void link(NotifierItem<MsgType> *);
 	NotifierItem<MsgType> *last(void);
@@ -64,7 +66,8 @@ public:
 /* called from within system lock */
 template <class MsgType> bool_t NotifierMsg<MsgType>::send(Mailbox *mailbox, MsgType *msg) {
 	/* post message to mailbox */
-	if(chMBPostS(mailbox, (msg_t)msg, TIME_IMMEDIATE) == RDY_OK) {
+//	if(chMBPostS(mailbox, (msg_t)msg, TIME_IMMEDIATE) == RDY_OK) {
+	if(chMBPostI(mailbox, (msg_t)msg) == RDY_OK) {
 		ref_count++;
 		return TRUE;
 	}
@@ -87,6 +90,8 @@ template <class MsgType> void NotifierMsg<MsgType>::reset(void) {
 template <class MsgType> NotifierItem<MsgType>::NotifierItem(Notifier<MsgType> *src, Mailbox *mail) :
 	source(src), mailbox(mail){
 	next = NULL;
+	tp = currp;
+	mask = 0;
 }
 
 template <class MsgType> NotifierItem<MsgType> *NotifierItem<MsgType>::last(void) {
@@ -103,8 +108,10 @@ template <class MsgType> void NotifierItem<MsgType>::link(NotifierItem<MsgType> 
 /* called from within lock */
 template <class MsgType> NotifierItem<MsgType> *NotifierItem<MsgType>::notify(MsgType *msg, int &n) {
 	/* allocate data from memory pool */
-	if(msg->send(mailbox, msg))
+	if(msg->send(mailbox, msg)) {
+		chEvtSignalFlagsI(tp, mask);
 		n++;
+	}
 	return next;
 }
 
@@ -115,8 +122,15 @@ template <class MsgType> NotifierItem<MsgType> *NotifierItem<MsgType>::notify(Ms
 
 template <class MsgType> MsgType *NotifierItem<MsgType>::get(void) {
 	MsgType *t;
-	chMBFetch(mailbox, (msg_t *)&t, TIME_INFINITE);
-	return t;
+	msg_t ret;
+	//	chMBFetch(mailbox, (msg_t *)&t, TIME_INFINITE);
+	chSysLock();
+	ret = chMBFetchI(mailbox, (msg_t *)&t);
+	chSysUnlock();
+	if (ret == RDY_OK)
+		return t;
+	else
+		return NULL;
 }
 
 template <class MsgType> void NotifierItem<MsgType>::release(MsgType *d) {
@@ -136,7 +150,7 @@ template <class MsgType> int Notifier<MsgType>::listeners(void) {
 	return 1;
 }
 
-template <class MsgType> void Notifier<MsgType>::listen(NotifierItem<MsgType> *notifier) {
+template <class MsgType> void Notifier<MsgType>::listen(NotifierItem<MsgType> *notifier, eventmask_t mask) {
 	chSysLock();
 	if(this->notify == NULL) {
 		/* we have no listeners */
@@ -145,6 +159,8 @@ template <class MsgType> void Notifier<MsgType>::listen(NotifierItem<MsgType> *n
 		/* link notifier to the last listener in list */
 		notify->last()->link(notifier);
 	}
+	notifier->tp = currp;
+	notifier->mask = mask;
 	chSysUnlock();
 }
 
@@ -157,6 +173,7 @@ template <class MsgType> int Notifier<MsgType>::broadcast(MsgType *msg) {
 	chSysLock();
 	while(next != NULL)
 		next = next->notify(msg, n);
+	chSchRescheduleS();
 	chSysUnlock();
 	
 	return n;
@@ -191,7 +208,7 @@ template <class MsgType, int N> int Listener<MsgType,N>::getSize(void) {
 	return N;
 }
 
-template <class MsgType, int N> Listener<MsgType,N>::Listener(Notifier<MsgType> *src)
+template <class MsgType, int N> Listener<MsgType,N>::Listener(Notifier<MsgType> *src, eventmask_t mask)
 : notifier(src, &mailbox), source(src) {
 	chMBInit(&mailbox, (msg_t *)mail, N);
 
@@ -199,7 +216,7 @@ template <class MsgType, int N> Listener<MsgType,N>::Listener(Notifier<MsgType> 
 	src->add(buffer, N);
 
 	/* register as a listener on the source */
-	src->listen(&notifier);
+	src->listen(&notifier, mask);
 }
 
 template <class MsgType, int N> MsgType *Listener<MsgType,N>::get(void) {
