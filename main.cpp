@@ -26,6 +26,8 @@ static msg_t Thread1(void *arg) {
 	(void) arg;
 	chRegSetThreadName("thd1");
 
+	chprintf((BaseSequentialStream *) &SD2, "sizeof(listener) %d\r\n", sizeof(listener));
+
 	while (TRUE) {
 		chEvtWaitAny(ALL_EVENTS );
 		while ((d = listener.get()) != NULL) {
@@ -134,6 +136,9 @@ int main(void) {
 	palSetPadMode(GPIOA, 2, PAL_MODE_ALTERNATE(7));
 	palSetPadMode(GPIOA, 3, PAL_MODE_ALTERNATE(7));
 
+	chprintf((BaseSequentialStream *) &SD2, "sizeof(LEDData) %d\r\n", sizeof(LEDData));
+	chprintf((BaseSequentialStream *) &SD2, "sizeof(led_notifier1) %d\r\n", sizeof(led_notifier1));
+
 	/*
 	 * Creates the example thread.
 	 */
@@ -142,6 +147,8 @@ int main(void) {
 	chThdCreateStatic(waThread2, sizeof(waThread2), NORMALPRIO + 2, Thread2,
 			NULL);
 	chThdCreateStatic(waThread3, sizeof(waThread3), NORMALPRIO, Thread3, NULL);
+
+	chThdSleepSeconds(5);
 
 	LEDData *d;
 	while (TRUE) {
