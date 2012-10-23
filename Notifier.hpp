@@ -27,7 +27,8 @@ private:
 	Notifier<MsgType> *source;
 public:
 	int getSize(void);
-	Listener(Notifier<MsgType> *, eventmask_t);
+	Listener(void);
+	void subscribe(Notifier<MsgType> *, eventmask_t);
 	MsgType *get(void);
 	void release(MsgType *);
 };
@@ -39,7 +40,7 @@ private:
 public:
 	int broadcast(MsgType *);
 	int listeners(void);
-	void listen(NotifierItem<MsgType> *notifier, eventmask_t);
+	void listen(NotifierItem<MsgType> *, eventmask_t);
 	void release(MsgType*);
 	void add(void*, size_t N);
 	MsgType *alloc(void);
@@ -48,13 +49,14 @@ public:
 
 template <class MsgType> class NotifierItem {
 private:
-	Notifier<MsgType> * const source;
-	Mailbox * const mailbox;
+	Notifier<MsgType> * source;
+	Mailbox * mailbox;
 	NotifierItem<MsgType> *next;
 public:
 	Thread *tp;
 	eventmask_t mask;
-	NotifierItem(Notifier<MsgType> *, Mailbox *);
+	NotifierItem();
+	void init(Notifier<MsgType> *, Mailbox *);
 	void link(NotifierItem<MsgType> *);
 	NotifierItem<MsgType> *last(void);
 	NotifierItem<MsgType> *notify(MsgType *);
@@ -87,11 +89,15 @@ template <class MsgType> void NotifierMsg<MsgType>::reset(void) {
 * NotifierItem
 * Not combined with Listener because Listeners can have different length N
 **********************************/
-template <class MsgType> NotifierItem<MsgType>::NotifierItem(Notifier<MsgType> *src, Mailbox *mail) :
-	source(src), mailbox(mail){
+template <class MsgType> NotifierItem<MsgType>::NotifierItem(void) {
 	next = NULL;
 	tp = currp;
 	mask = 0;
+}
+
+template <class MsgType> void NotifierItem<MsgType>::init(Notifier<MsgType> *src, Mailbox *mail) {
+	source = src;
+	mailbox = mail;
 }
 
 template <class MsgType> NotifierItem<MsgType> *NotifierItem<MsgType>::last(void) {
@@ -208,9 +214,13 @@ template <class MsgType, int N> int Listener<MsgType,N>::getSize(void) {
 	return N;
 }
 
-template <class MsgType, int N> Listener<MsgType,N>::Listener(Notifier<MsgType> *src, eventmask_t mask)
-: notifier(src, &mailbox), source(src) {
+template <class MsgType, int N> Listener<MsgType,N>::Listener(void) {
 	chMBInit(&mailbox, (msg_t *)mail, N);
+}
+
+template <class MsgType, int N> void Listener<MsgType,N>::subscribe(Notifier<MsgType> *src, eventmask_t mask) {
+	notifier.init(src, &mailbox);
+	source = src;
 
 	/* add all items to pool */
 	src->add(buffer, N);

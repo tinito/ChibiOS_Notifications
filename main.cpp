@@ -20,11 +20,13 @@ Notifier<LEDData> led_notifier2;
  */
 static WORKING_AREA(waThread1, 128);
 static msg_t Thread1(void *arg) {
-	Listener<LEDData, 5> listener(&led_notifier1, 1);
+	Listener<LEDData, 5> listener;
 	LEDData *d;
 
 	(void) arg;
 	chRegSetThreadName("thd1");
+
+	listener.subscribe(&led_notifier1, 1);
 
 	while (TRUE) {
 		chEvtWaitAny(ALL_EVENTS );
@@ -47,11 +49,13 @@ static msg_t Thread1(void *arg) {
  */
 static WORKING_AREA(waThread2, 128);
 static msg_t Thread2(void *arg) {
-	Listener<LEDData, 5> listener(&led_notifier2, 1);
+	Listener<LEDData, 5> listener;
 	LEDData *d;
 
 	(void) arg;
 	chRegSetThreadName("thd2");
+
+	listener.subscribe(&led_notifier2, 1);
 
 	while (TRUE) {
 		chEvtWaitAny(ALL_EVENTS );
@@ -72,13 +76,17 @@ static msg_t Thread2(void *arg) {
 /* print the leds to serial */
 static WORKING_AREA(waThread3, 512);
 static msg_t Thread3(void *arg) {
-	Listener<LEDData, 2> listener1(&led_notifier1, 1);
-	Listener<LEDData, 2> listener2(&led_notifier2, 2);
+	Listener<LEDData, 2> listener1;
+	Listener<LEDData, 2> listener2;
 	LEDData *d;
+
 	eventmask_t evt;
 
 	(void) arg;
 	chRegSetThreadName("thd3");
+
+	listener1.subscribe(&led_notifier1, 1);
+	listener2.subscribe(&led_notifier2, 2);
 
 	while (TRUE) {
 		evt = chEvtWaitAny(ALL_EVENTS );
